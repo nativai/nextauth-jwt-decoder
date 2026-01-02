@@ -33,6 +33,20 @@ No key derivation headaches. No configuration. Just paste and decode.
 2. Paste your `NEXTAUTH_SECRET` environment variable
 3. Click "Decode" or press Ctrl+Enter
 
+### Finding Your Session Cookie
+
+The cookie name varies depending on your setup:
+
+**NextAuth.js v4:**
+- `next-auth.session-token` — Standard (HTTP or localhost)
+- `__Secure-next-auth.session-token` — When using HTTPS with secure cookies
+
+**Auth.js v5:**
+- `authjs.session-token` — Standard (HTTP or localhost)
+- `__Secure-authjs.session-token` — When using HTTPS with secure cookies
+
+The `__Secure-` prefix is automatically added by NextAuth/Auth.js when cookies are set with the `Secure` flag (typically in production with HTTPS).
+
 ## Security
 
 All decryption happens in your browser using the Web Crypto API. No data is sent to any server.

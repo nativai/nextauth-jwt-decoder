@@ -138,6 +138,13 @@
       margin-top: -10px;
       margin-bottom: 15px;
     }
+    .version-hint code {
+      background: #2d2d44;
+      padding: 2px 5px;
+      border-radius: 3px;
+      color: #aaa;
+      font-size: 11px;
+    }
   </style>
 </head>
 <body>
@@ -151,6 +158,7 @@
   <div>
     <label for="token">JWE Token (from cookie)</label>
     <textarea id="token" placeholder="eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..."></textarea>
+    <p class="version-hint">Cookie name: <code>next-auth.session-token</code> or <code>__Secure-next-auth.session-token</code> (v4) | <code>authjs.session-token</code> or <code>__Secure-authjs.session-token</code> (v5)</p>
   </div>
 
   <div>
