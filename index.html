@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NextAuth JWT Decoder</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+    h1 {
+      color: #00d9ff;
+      margin-bottom: 5px;
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .security-note {
+      background: #2d2d44;
+      border-left: 3px solid #00d9ff;
+      padding: 10px 15px;
+      margin-bottom: 25px;
+      font-size: 13px;
+      color: #aaa;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #00d9ff;
+      font-weight: 500;
+    }
+    textarea, input[type="text"], input[type="password"], select {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #3d3d5c;
+      border-radius: 6px;
+      background: #16162a;
+      color: #eee;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    textarea:focus, input:focus, select:focus {
+      outline: none;
+      border-color: #00d9ff;
+    }
+    .row {
+      display: flex;
+      gap: 15px;
+    }
+    .row > div {
+      flex: 1;
+    }
+    button {
+      background: #00d9ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #00b8d9;
+    }
+    button:disabled {
+      background: #3d3d5c;
+      cursor: not-allowed;
+    }
+    .output {
+      margin-top: 25px;
+    }
+    .output-header {
+      background: #2d2d44;
+      padding: 10px 15px;
+      border-radius: 6px 6px 0 0;
+      font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .output-content {
+      background: #16162a;
+      border: 1px solid #3d3d5c;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      padding: 15px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .error {
+      color: #ff6b6b;
+    }
+    .success {
+      color: #51cf66;
+    }
+    .copy-btn {
+      background: transparent;
+      border: 1px solid #00d9ff;
+      color: #00d9ff;
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+    .copy-btn:hover {
+      background: #00d9ff;
+      color: #1a1a2e;
+    }
+    .salt-field {
+      display: none;
+    }
+    .salt-field.visible {
+      display: block;
+    }
+    .version-hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: -10px;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔐 NextAuth JWT Decoder</h1>
+  <p class="subtitle">Decrypt NextAuth.js / Auth.js session tokens locally in your browser</p>
+  
+  <div class="security-note">
+    <strong>🛡️ Privacy:</strong> Everything runs client-side. Your secret and tokens never leave your browser.
+  </div>
+
+  <div>
+    <label for="token">JWE Token (from cookie)</label>
+    <textarea id="token" placeholder="eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..."></textarea>
+  </div>
+
+  <div>
+    <label for="secret">NEXTAUTH_SECRET / AUTH_SECRET</label>
+    <input type="password" id="secret" placeholder="Your secret from .env">
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="version">Version</label>
+      <select id="version">
+        <option value="v4">NextAuth.js v4</option>
+        <option value="v5">Auth.js v5</option>
+      </select>
+      <p class="version-hint">v4: empty salt | v5: cookie name as salt</p>
+    </div>
+    <div class="salt-field" id="saltField">
+      <label for="salt">Cookie Name (salt for v5)</label>
+      <input type="text" id="salt" value="authjs.session-token" placeholder="authjs.session-token">
+    </div>
+  </div>
+
+  <button id="decryptBtn">Decrypt Token</button>
+
+  <div class="output" id="outputSection" style="display: none;">
+    <div class="output-header">
+      <span id="outputTitle">Decrypted Payload</span>
+      <button class="copy-btn" id="copyBtn">Copy</button>
+    </div>
+    <div class="output-content" id="output"></div>
+  </div>
+
+  <script type="module">
+    import * as jose from 'https://esm.sh/jose@5.2.0';
+
+    window.jose = jose;
+
+    // Show/hide salt field based on version
+    document.getElementById('version').addEventListener('change', (e) => {
+      const saltField = document.getElementById('saltField');
+      if (e.target.value === 'v5') {
+        saltField.classList.add('visible');
+      } else {
+        saltField.classList.remove('visible');
+      }
+    });
+
+    // HKDF key derivation matching NextAuth's implementation
+    async function deriveKey(secret, salt, info, length) {
+      const encoder = new TextEncoder();
+      const secretBytes = encoder.encode(secret);
+      const saltBytes = encoder.encode(salt);
+      const infoBytes = encoder.encode(info);
+
+      // Import secret as raw key material
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        secretBytes,
+        { name: 'HKDF' },
+        false,
+        ['deriveBits']
+      );
+
+      // Derive bits using HKDF
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'HKDF',
+          hash: 'SHA-256',
+          salt: saltBytes,
+          info: infoBytes
+        },
+        keyMaterial,
+        length * 8
+      );
+
+      return new Uint8Array(derivedBits);
+    }
+
+    window.decrypt = async function() {
+      const token = document.getElementById('token').value.trim();
+      const secret = document.getElementById('secret').value;
+      const version = document.getElementById('version').value;
+      const salt = document.getElementById('salt').value;
+      
+      const outputSection = document.getElementById('outputSection');
+      const output = document.getElementById('output');
+      const outputTitle = document.getElementById('outputTitle');
+      
+      outputSection.style.display = 'block';
+      
+      if (!token || !secret) {
+        output.className = 'output-content error';
+        output.textContent = 'Please provide both token and secret';
+        return;
+      }
+
+      try {
+        // Determine HKDF parameters based on version
+        let hkdfSalt, hkdfInfo, keyLength;
+        
+        // First, peek at the token header to determine encryption algorithm
+        const parts = token.split('.');
+        if (parts.length !== 5) {
+          throw new Error('Invalid JWE token format. Expected 5 parts separated by dots.');
+        }
+        
+        const header = JSON.parse(new TextDecoder().decode(jose.base64url.decode(parts[0])));
+        const enc = header.enc || 'A256GCM';
+        
+        // Set key length based on encryption algorithm
+        if (enc === 'A256CBC-HS512') {
+          keyLength = 64;
+        } else {
+          keyLength = 32; // A256GCM and others
+        }
+
+        if (version === 'v4') {
+          hkdfSalt = '';
+          hkdfInfo = 'NextAuth.js Generated Encryption Key';
+        } else {
+          // v5 uses cookie name as salt
+          hkdfSalt = salt || 'authjs.session-token';
+          hkdfInfo = `Auth.js Generated Encryption Key (${hkdfSalt})`;
+        }
+
+        // Derive the encryption key
+        const derivedKey = await deriveKey(secret, hkdfSalt, hkdfInfo, keyLength);
+
+        // Decrypt the JWE
+        const { payload } = await jose.jwtDecrypt(token, derivedKey);
+
+        output.className = 'output-content success';
+        outputTitle.textContent = `✓ Decrypted Payload (${enc})`;
+        output.textContent = JSON.stringify(payload, null, 2);
+        window.lastOutput = JSON.stringify(payload, null, 2);
+
+      } catch (err) {
+        output.className = 'output-content error';
+        outputTitle.textContent = '✗ Decryption Failed';
+        
+        let errorMsg = err.message;
+        
+        // Add helpful hints
+        if (err.message.includes('decryption operation failed')) {
+          errorMsg += '\n\nPossible causes:\n';
+          errorMsg += '• Wrong NEXTAUTH_SECRET\n';
+          errorMsg += '• Wrong version selected (try switching v4 ↔ v5)\n';
+          errorMsg += '• For v5: wrong cookie name/salt';
+        }
+        
+        output.textContent = errorMsg;
+      }
+    };
+
+    window.copyOutput = function() {
+      if (window.lastOutput) {
+        navigator.clipboard.writeText(window.lastOutput);
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      }
+    };
+
+    // Attach event listeners after module loads
+    document.getElementById('decryptBtn').addEventListener('click', window.decrypt);
+    document.getElementById('copyBtn').addEventListener('click', window.copyOutput);
+
+    // Allow Ctrl+Enter to decrypt
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        window.decrypt();
+      }
+    });
+  </script>
+</body>
+</html>
